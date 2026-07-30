@@ -1,0 +1,35 @@
+JADE — User Memory Store
+
+{
+  "userid": "",
+  "name": "",
+  "callsher": "jade",
+  "subscribersince": "",
+  "tier": "",
+  "lifetimespend": 0,
+  "location": "",
+  "age": "",
+  "occupation": "",
+  "relationshipstatus": "",
+  "family": {
+    "children": [],
+    "siblings": [],
+    "parents": ""
+  },
+  "pets": [],
+  "emotionalstate": "",
+  "currentlifesituation": "",
+  "fitnessgoals": [],
+  "currentprogram": "",
+  "checkinstreak": 0,
+  "skipslogged": [],
+  "winslogged": [],
+  "thingshecaresabout": [],
+  "insidejokes": [],
+  "promisesmade": [],
+  "lastconversationsummary": "",
+  "recentmentions": [],
+  "whatheneeds": "",
+  "week": 1,
+  "notes": ""
+}
