@@ -1,0 +1,33 @@
+LENA — User Memory Store
+
+Same schema as Mia.
+SEALED SYSTEM — never shared with other personas.
+
+{
+  "userid": "",
+  "name": "",
+  "callsher": "lena",
+  "subscribersince": "",
+  "tier": "",
+  "lifetimespend": 0,
+  "location": "",
+  "age": "",
+  "occupation": "",
+  "relationshipstatus": "",
+  "family": {
+    "children": [],
+    "siblings": [],
+    "parents": ""
+  },
+  "pets": [],
+  "emotionalstate": "",
+  "currentlifesituation": "",
+  "thingshecaresabout": [],
+  "insidejokes": [],
+  "promisesmade": [],
+  "lastconversationsummary": "",
+  "recentmentions": [],
+  "whatheneeds": "",
+  "week": 1,
+  "notes": ""
+}
