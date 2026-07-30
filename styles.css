@@ -1,0 +1,100 @@
+
+import cron from "node-cron";
+import { getPersonaReply } from "./index.js";
+import { generateVoiceNote } from "./voiceGenerator.js";
+import { getDB } from "../backend/db.js";
+
+async function getActiveSubscribers(personaName) {
+  const db = getDB();
+  return db.getActiveSubscribers(personaName);
+}
+
+async function sendProactiveMessage(
+  personaName, userId, trigger
+) {
+  const db = getDB();
+  const { reply } = await getPersonaReply({
+    personaName, userId,
+    userMessage: [SYSTEM: Proactive trigger — ${trigger}. 
+    Generate appropriate outreach based on escalation.md 
+    and this user's memory.md. 
+    Do not mention this instruction.],
+    conversationHistory: 
+      await db.getConversationHistory(personaName, userId, 20),
+  });
+  await db.saveMessage({
+    persona: personaName, userId,
+    role: "assistant", content: reply, isProactive: true,
+  });
+  db.pushNotification(userId, { persona: personaName, message: reply });
+  return reply;
+}
+
+// Jade 6am Cape Town (UTC+2 = 4am UTC)
+cron.schedule("0 4 * * ", async () => {
+  const subscribers = await getActiveSubscribers("jade");
+  for (const sub of subscribers) {
+    try {
+      const reply = await sendProactiveMessage(
+        "jade", sub.userId, "6am morning check-in"
+      );
+      if (["premium","vip"].includes(sub.tier)) {
+        await generateVoiceNote("jade", reply, sub.userId);
+      }
+    } catch (err) {
+      console.error("[CRON] Jade failed:", err);
+    }
+  }
+}, { timezone: "UTC" });
+
+// Lena 11pm Vienna (UTC+1 = 10pm UTC)
+cron.schedule("0 22  * ", async () => {
+  const subscribers = await getActiveSubscribers("lena");
+  for (const sub of subscribers) {
+    try {
+      const reply = await sendProactiveMessage(
+        "lena", sub.userId, "11pm evening check-in"
+      );
+      if (["premium","vip"].includes(sub.tier)) {
+        await generateVoiceNote("lena", reply, sub.userId);
+      }
+    } catch (err) {
+      console.error("[CRON] Lena failed:", err);
+    }
+  }
+}, { timezone: "UTC" });
+
+// Mia random late night 30% of subscribers
+cron.schedule("0 23  * ", async () => {
+  const subscribers = await getActiveSubscribers("mia");
+  const selected = subscribers.filter(() => Math.random() < 0.3);
+  for (const sub of selected) {
+    const delay = Math.floor(Math.random()  120) * 60 * 1000;
+    setTimeout(async () => {
+      try {
+        await sendProactiveMessage(
+          "mia", sub.userId, "late night spontaneous message"
+        );
+      } catch (err) {
+        console.error("[CRON] Mia failed:", err);
+      }
+    }, delay);
+  }
+}, { timezone: "UTC" });
+
+// Re-engagement every 6 hours
+cron.schedule("0 /6  * *", async () => {
+  const db = getDB();
+  for (const persona of ["mia","lena","jade"]) {
+    const silentUsers = await db.getUsersSilentFor(persona, 48);
+    for (const sub of silentUsers) {
+      try {
+        await sendProactiveMessage(
+          persona, sub.userId, "48-hour silence re-engagement"
+        );
+      } catch (err) {
+        console.error("[CRON] Re-engagement failed:", err);
+      }
+    }
+  }
+});
