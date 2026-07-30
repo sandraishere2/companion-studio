@@ -1,0 +1,137 @@
+import Anthropic from "@anthropic-ai/sdk";
+import fs from "fs/promises";
+import path from "path";
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPICAPIKEY,
+});
+
+async function loadPersonaContext(personaName) {
+  const dir = path.join(process.cwd(), personaName.toLowerCase());
+  const files = [
+    "persona.md","voice.md","boundaries.md",
+    "memory.md","escalation.md",
+  ];
+  const contents = await Promise.all(
+    files.map(async (file) => {
+      const content = await fs.readFile(
+        path.join(dir, file), "utf-8"
+      );
+      return \n\n=== ${file.toUpperCase()} ===\n${content};
+    })
+  );
+  return contents.join("\n");
+}
+
+function buildSystemPrompt(personaName, personaContext) {
+  return You are an AI companion named ${personaName}.
+
+DISCLOSURE RULE — NON-NEGOTIABLE:
+If user asks if you are AI, real, or a bot — 
+answer honestly and warmly. Never deny being AI.
+
+Before every reply read these five files:
+${personaContext}
+
+Instructions:
+1. Match her voice EXACTLY per voice.md
+2. Reply fully in character
+3. Honor all boundaries in boundaries.md
+4. Use memory.md to personalize every message
+5. Follow escalation.md timing and triggers
+6. Never invent facts about the user
+7. After reply output memory update:
+
+<memoryupdate>
+{
+  "userid": "USERIDHERE",
+  "newfacts": {}
+}
+</memoryupdate>;
+}
+
+async function updateMemory(personaName, userId, newFacts) {
+  if (!newFacts || Object.keys(newFacts).length === 0) return;
+  const memoryPath = path.join(
+    process.cwd(), personaName.toLowerCase(), "memory.md"
+  );
+  const memoryContent = await fs.readFile(memoryPath, "utf-8");
+  const userPattern = new RegExp(
+    (\\{[^}]"userid":\\s"${userId}"[^}]\\}), "s"
+  );
+  const match = memoryContent.match(userPattern);
+  let updatedContent;
+  if (match) {
+    try {
+      const existing = JSON.parse(match[1]);
+      const updated = deepMerge(existing, newFacts);
+      updatedContent = memoryContent.replace(
+        match[1], JSON.stringify(updated, null, 2)
+      );
+    } catch {
+      return;
+    }
+  } else {
+    const newEntry = JSON.stringify(
+      { userid: userId, ...newFacts }, null, 2
+    );
+    updatedContent = memoryContent + "\n\n" + newEntry;
+  }
+  await fs.writeFile(memoryPath, updatedContent, "utf-8");
+}
+
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (Array.isArray(source[key]) && Array.isArray(target[key])) {
+      result[key] = [...new Set([...target[key], ...source[key]])];
+    } else if (
+      typeof source[key] === "object" && source[key] !== null &&
+      typeof target[key] === "object" && target[key] !== null
+    ) {
+      result[key] = deepMerge(target[key], source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+function parseMemoryUpdate(responseText) {
+  const match = responseText.match(
+    /<memoryupdate>([\s\S]?)<\/memoryupdate>/
+  );
+  if (!match) return null;
+  try { return JSON.parse(match[1]); } catch { return null; }
+}
+
+function cleanReply(responseText) {
+  return responseText
+    .replace(/<memoryupdate>[\s\S]*?<\/memoryupdate>/g, "")
+    .trim();
+}
+
+export async function getPersonaReply({
+  personaName, userId, userMessage, conversationHistory = [],
+}) {
+  const personaContext = await loadPersonaContext(personaName);
+  const systemPrompt = buildSystemPrompt(personaName, personaContext);
+  const messages = [
+    ...conversationHistory,
+    { role: "user", content: userMessage },
+  ];
+  const response = await client.messages.create({
+    model: "claude-opus-4-5",
+    maxtokens: 1024,
+    system: systemPrompt,
+    messages,
+  });
+  const rawReply = response.content[0].text;
+  const memoryUpdate = parseMemoryUpdate(rawReply);
+  if (memoryUpdate?.newfacts) {
+    await updateMemory(personaName, userId, {
+      userid: userId, ...memoryUpdate.newfacts,
+    });
+  }
+  return { reply: cleanReply(rawReply), usage: response.usage };
+}
