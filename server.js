@@ -14,6 +14,12 @@ app.use('/api/stripe/webhook', stripeWebhookRoute);
 app.use(express.json());
 
 // --- Serve static test page(s) from /public ---
+// --- Simple health check so you can confirm the server is alive ---
+app.get('/', (req, res) => {
+  res.send('Companion Studio backend is running.');
+});
+
+// --- Serve static test page(s) from /public ---
 app.use(express.static('public'));
 
 // --- Regular billing routes (checkout, customer portal) ---
@@ -24,10 +30,6 @@ app.use('/api/billing', billingRoutes);
 const testCheckoutRoute = require('./routes/testCheckout');
 app.use('/api/test', testCheckoutRoute);
 
-// --- Simple health check so you can confirm the server is alive ---
-app.get('/', (req, res) => {
-  res.send('Companion Studio backend is running.');
-});
 
 // Railway provides the PORT environment variable automatically.
 const PORT = process.env.PORT || 8080;
