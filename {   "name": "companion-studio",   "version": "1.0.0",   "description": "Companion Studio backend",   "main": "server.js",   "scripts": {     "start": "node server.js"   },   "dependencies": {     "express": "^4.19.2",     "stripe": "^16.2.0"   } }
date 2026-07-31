@@ -1,0 +1,13 @@
+{
+  "name": "companion-studio",
+  "version": "1.0.0",
+  "description": "Companion Studio backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "stripe": "^16.2.0"
+  }
+}
