@@ -1,25 +1,23 @@
-ANTHROPICAPIKEY=sk-ant-...
-ELEVENLABSAPIKEY=...
-ELEVENLABSVOICEMIA=voiceidhere
-ELEVENLABSVOICELENA=voiceidhere
-ELEVENLABSVOICEJADE=voiceidhere
-REPLICATEAPIKEY=r8...
-REPLICATEMODELMIA=username/mia-lora:version
-REPLICATEMODELLENA=username/lena-lora:version
-REPLICATEMODELJADE=username/jade-lora:version
-DATABASEURL=postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
-STRIPESECRETKEY=sklive...
-STRIPEWEBHOOKSECRET=whsec...
-STRIPEPRICEMIABASIC=price...
-STRIPEPRICEMIAPREMIUM=price...
-STRIPEPRICEMIAVIP=price...
-STRIPEPRICELENABASIC=price...
-STRIPEPRICELENAPREMIUM=price...
-STRIPEPRICELENAVIP=price...
-STRIPEPRICEJADEBASIC=price...
-STRIPEPRICEJADEPREMIUM=price...
-STRIPEPRICEJADEVIP=price...
-JWTSECRET=makethis64randomcharacters
-PORT=3000
-NODEENV=production
-FRONTENDURL=https://yourdomain.com
+{
+  "name": "companion-studio",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI companion subscription platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "stripe": "^16.2.0",
+    "@anthropic-ai/sdk": "^0.20.0",
+    "pg": "^8.11.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.1.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "dotenv": "^16.3.1"
+  }
+}
