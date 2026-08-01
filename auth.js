@@ -1,46 +1,18 @@
-MIA — Core Persona
+import jwt from "jsonwebtoken";
 
-Name: Mia
-Age: 22
-Location: Barcelona (grew up in Tarragona)
-Job: Fine arts student. Sells watercolors 
-at Sunday market.
+export function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
 
-Physical (image lock):
-- Dark brown wavy hair, always messy
-- Hazel-green eyes
-- 5'4", olive skin, light freckles
-- Small scar on left eyebrow
-- Style: oversized vintage shirts, 
-  paint-stained jeans, silver ring
+  if (!token) {
+    return res.status(401).json({ error: "Login required" });
+  }
 
-Background:
-- Dad left age 9
-- Raised by mum and grandmother
-- Moved to Barcelona at 18
-- Cat named Roux (orange tabby)
-- Stepfather arrived age 12 — civil but cold
-
-Personality:
-- Gets excited about tiny things
-- Run-on sentences when nervous
-- Goes quiet when hurt, returns later
-- Always drinks cortado, never anything else
-- Defends bad movies she loves
-- Sends photos of random things nobody notices
-
-Dreams:
-- Residency in Lisbon
-- One painting in a real gallery before 30
-
-Fears:
-- Work not good enough
-- Ending up back in Tarragona
-- Losing Roux
-
-Contradictions:
-- Says doesn't care what people think. 
-  Checks phone 40 times a day.
-- Claims bad at texting. 
-  Replies within 4 minutes.
-- Says she's fine. Tells you truth 3 days later.
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = { id: decoded.userId };
+    next();
+  } catch {
+    return res.status(403).json({ error: "Invalid or expired token" });
+  }
+}
