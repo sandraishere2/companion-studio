@@ -1,38 +1,37 @@
-// server.js
-// This is the actual entry point of the app — Railway runs this file
-// (via "npm start", which runs "node server.js" per package.json).
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { router } from "./routes.js";
+import { initDB } from "./db.js";
+import dotenv from "dotenv";
 
-const express = require('express');
+dotenv.config();
+
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// --- Webhook route MUST be mounted before express.json() ---
-// Stripe needs the raw, unparsed request body to verify signatures.
-const stripeWebhookRoute = require('./routes/stripeWebhook');
-app.use('/api/stripe/webhook', stripeWebhookRoute);
-
-// --- Now it's safe to parse JSON for everything else ---
+app.use(helmet());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  credentials: true,
+}));
 app.use(express.json());
 
-// --- Serve static test page(s) from /public ---
-// --- Simple health check so you can confirm the server is alive ---
-app.get('/', (req, res) => {
-  res.send('Companion Studio backend is running.');
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests, please try again later.",
 });
+app.use("/api/", limiter);
+app.use("/api", router);
+app.use("/audio", express.static("audio"));
 
-// --- Serve static test page(s) from /public ---
-app.use(express.static('public'));
+async function start() {
+  await initDB();
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-// --- Regular billing routes (checkout, customer portal) ---
-const billingRoutes = require('./routes/billing');
-app.use('/api/billing', billingRoutes);
-
-// --- Temporary no-auth test route (delete before going live) ---
-const testCheckoutRoute = require('./routes/testCheckout');
-app.use('/api/test', testCheckoutRoute);
-
-
-// Railway provides the PORT environment variable automatically.
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+start();
