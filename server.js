@@ -25,8 +25,8 @@ const limiter = rateLimit({
 });
 app.use("/api/", limiter);
 app.use("/api", router);
+app.use(express.static("public"));
 app.use("/audio", express.static("audio"));
-
 async function start() {
   await initDB();
   app.listen(PORT, () => {
