@@ -1,137 +1,799 @@
-import Anthropic from "@anthropic-ai/sdk";
-import fs from "fs/promises";
-import path from "path";
-
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPICAPIKEY,
-});
-
-async function loadPersonaContext(personaName) {
-  const dir = path.join(process.cwd(), personaName.toLowerCase());
-  const files = [
-    "persona.md","voice.md","boundaries.md",
-    "memory.md","escalation.md",
-  ];
-  const contents = await Promise.all(
-    files.map(async (file) => {
-      const content = await fs.readFile(
-        path.join(dir, file), "utf-8"
-      );
-      return \n\n=== ${file.toUpperCase()} ===\n${content};
-    })
-  );
-  return contents.join("\n");
-}
-
-function buildSystemPrompt(personaName, personaContext) {
-  return You are an AI companion named ${personaName}.
-
-DISCLOSURE RULE — NON-NEGOTIABLE:
-If user asks if you are AI, real, or a bot — 
-answer honestly and warmly. Never deny being AI.
-
-Before every reply read these five files:
-${personaContext}
-
-Instructions:
-1. Match her voice EXACTLY per voice.md
-2. Reply fully in character
-3. Honor all boundaries in boundaries.md
-4. Use memory.md to personalize every message
-5. Follow escalation.md timing and triggers
-6. Never invent facts about the user
-7. After reply output memory update:
-
-<memoryupdate>
-{
-  "userid": "USERIDHERE",
-  "newfacts": {}
-}
-</memoryupdate>;
-}
-
-async function updateMemory(personaName, userId, newFacts) {
-  if (!newFacts || Object.keys(newFacts).length === 0) return;
-  const memoryPath = path.join(
-    process.cwd(), personaName.toLowerCase(), "memory.md"
-  );
-  const memoryContent = await fs.readFile(memoryPath, "utf-8");
-  const userPattern = new RegExp(
-    (\\{[^}]"userid":\\s"${userId}"[^}]\\}), "s"
-  );
-  const match = memoryContent.match(userPattern);
-  let updatedContent;
-  if (match) {
-    try {
-      const existing = JSON.parse(match[1]);
-      const updated = deepMerge(existing, newFacts);
-      updatedContent = memoryContent.replace(
-        match[1], JSON.stringify(updated, null, 2)
-      );
-    } catch {
-      return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Companion Studio</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
-  } else {
-    const newEntry = JSON.stringify(
-      { userid: userId, ...newFacts }, null, 2
-    );
-    updatedContent = memoryContent + "\n\n" + newEntry;
-  }
-  await fs.writeFile(memoryPath, updatedContent, "utf-8");
-}
 
-function deepMerge(target, source) {
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    if (Array.isArray(source[key]) && Array.isArray(target[key])) {
-      result[key] = [...new Set([...target[key], ...source[key]])];
-    } else if (
-      typeof source[key] === "object" && source[key] !== null &&
-      typeof target[key] === "object" && target[key] !== null
-    ) {
-      result[key] = deepMerge(target[key], source[key]);
-    } else {
-      result[key] = source[key];
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
     }
-  }
-  return result;
-}
 
-function parseMemoryUpdate(responseText) {
-  const match = responseText.match(
-    /<memoryupdate>([\s\S]?)<\/memoryupdate>/
-  );
-  if (!match) return null;
-  try { return JSON.parse(match[1]); } catch { return null; }
-}
+    .container {
+      width: 100%;
+      max-width: 500px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 90vh;
+      max-height: 800px;
+    }
 
-function cleanReply(responseText) {
-  return responseText
-    .replace(/<memoryupdate>[\s\S]*?<\/memoryupdate>/g, "")
-    .trim();
-}
+    /* AUTH SCREEN */
+    #authScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+      flex: 1;
+    }
 
-export async function getPersonaReply({
-  personaName, userId, userMessage, conversationHistory = [],
-}) {
-  const personaContext = await loadPersonaContext(personaName);
-  const systemPrompt = buildSystemPrompt(personaName, personaContext);
-  const messages = [
-    ...conversationHistory,
-    { role: "user", content: userMessage },
-  ];
-  const response = await client.messages.create({
-    model: "claude-opus-4-5",
-    maxtokens: 1024,
-    system: systemPrompt,
-    messages,
-  });
-  const rawReply = response.content[0].text;
-  const memoryUpdate = parseMemoryUpdate(rawReply);
-  if (memoryUpdate?.newfacts) {
-    await updateMemory(personaName, userId, {
-      userid: userId, ...memoryUpdate.newfacts,
+    .auth-form {
+      width: 100%;
+      max-width: 300px;
+    }
+
+    .auth-form h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .auth-form p {
+      color: #777;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+      background: #f9f9ff;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .auth-toggle {
+      margin-top: 20px;
+      font-size: 13px;
+      color: #777;
+    }
+
+    .auth-toggle a {
+      color: #667eea;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .error {
+      background: #ffe0e0;
+      color: #c00;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+
+    .success {
+      background: #e0ffe0;
+      color: #060;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+
+    /* CHAT SCREEN */
+    #chatScreen {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .chat-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .chat-header h2 {
+      font-size: 22px;
+      margin-bottom: 5px;
+    }
+
+    .chat-header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .persona-tabs {
+      display: flex;
+      gap: 10px;
+      padding: 15px 20px;
+      border-bottom: 1px solid #e0e0e0;
+      background: #f9f9f9;
+      overflow-x: auto;
+    }
+
+    .persona-tab {
+      padding: 8px 16px;
+      border: 2px solid #e0e0e0;
+      background: white;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+
+    .persona-tab.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-color: #667eea;
+    }
+
+    .persona-tab:hover {
+      border-color: #667eea;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      display: flex;
+      gap: 10px;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.user {
+      justify-content: flex-end;
+    }
+
+    .message-bubble {
+      max-width: 80%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+
+    .message.user .message-bubble {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant .message-bubble {
+      background: #f0f0f0;
+      color: #333;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message.loading .message-bubble {
+      background: #e8e8e8;
+      color: #666;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      height: 20px;
+    }
+
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      background: #999;
+      border-radius: 50%;
+      animation: typing 1.4s infinite;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+      0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+      30% { opacity: 1; transform: translateY(-8px); }
+    }
+
+    .subscription-banner {
+      background: #fff9e6;
+      padding: 12px 20px;
+      border-bottom: 1px solid #e0d700;
+      font-size: 13px;
+      color: #666;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .subscription-banner button {
+      padding: 6px 12px;
+      font-size: 12px;
+      margin: 0;
+    }
+
+    .chat-input-area {
+      padding: 15px 20px;
+      border-top: 1px solid #e0e0e0;
+      background: #fafafa;
+      display: flex;
+      gap: 10px;
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      resize: none;
+      max-height: 80px;
+      font-family: inherit;
+      transition: border-color 0.3s;
+    }
+
+    .chat-input:focus {
+      outline: none;
+      border-color: #667eea;
+      background: white;
+    }
+
+    .btn-send {
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+      align-self: flex-end;
+      margin: 0;
+    }
+
+    .btn-send:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .header-actions {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-small {
+      padding: 8px 12px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .btn-small:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .modal-content h3 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    .modal-content p {
+      color: #666;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .modal-buttons button {
+      flex: 1;
+      margin: 0;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        max-width: 100%;
+        height: 100vh;
+        border-radius: 0;
+      }
+
+      .message-bubble {
+        max-width: 90%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- AUTH SCREEN -->
+    <div id="authScreen">
+      <div class="auth-form">
+        <h1>Companion Studio</h1>
+        <p>Chat with AI companions who truly get you</p>
+        <div id="authMessage"></div>
+
+        <div id="loginForm">
+          <div class="form-group">
+            <input type="email" id="loginEmail" placeholder="Email" required>
+          </div>
+          <div class="form-group">
+            <input type="password" id="loginPassword" placeholder="Password" required>
+          </div>
+          <button class="btn-primary" onclick="handleLogin()">Sign In</button>
+          <div class="auth-toggle">
+            Don't have an account? <a onclick="toggleAuthMode()">Sign up</a>
+          </div>
+        </div>
+
+        <div id="registerForm" style="display: none;">
+          <div class="form-group">
+            <input type="email" id="registerEmail" placeholder="Email" required>
+          </div>
+          <div class="form-group">
+            <input type="password" id="registerPassword" placeholder="Password (min 8 chars)" required>
+          </div>
+          <div class="form-group">
+            <input type="password" id="registerPassword2" placeholder="Confirm password" required>
+          </div>
+          <button class="btn-primary" onclick="handleRegister()">Create Account</button>
+          <div class="auth-toggle">
+            Already have an account? <a onclick="toggleAuthMode()">Sign in</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT SCREEN -->
+    <div id="chatScreen">
+      <div class="chat-header">
+        <h2>Chatting with <span id="currentPersonaName">Mia</span></h2>
+        <p id="subscriptionStatus">Free tier · 10 messages/day</p>
+        <div class="header-actions">
+          <button class="btn-small" onclick="openSubscriptionModal()">Upgrade</button>
+          <button class="btn-small" onclick="handleLogout()">Logout</button>
+        </div>
+      </div>
+
+      <div class="persona-tabs">
+        <div class="persona-tab active" onclick="switchPersona('mia')">Mia</div>
+        <div class="persona-tab" onclick="switchPersona('lena')">Lena</div>
+        <div class="persona-tab" onclick="switchPersona('jade')">Jade</div>
+      </div>
+
+      <div class="chat-messages" id="chatMessages"></div>
+
+      <div class="chat-input-area">
+        <textarea class="chat-input" id="messageInput" placeholder="Say something..." rows="1"></textarea>
+        <button class="btn-send" id="sendBtn" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <!-- SUBSCRIPTION MODAL -->
+    <div id="subscriptionModal" class="modal">
+      <div class="modal-content">
+        <h3>Choose Your Plan</h3>
+        <p>Unlock unlimited messages and exclusive voice features</p>
+        <div style="text-align: left; margin: 20px 0; font-size: 13px; line-height: 1.8;">
+          <div style="margin-bottom: 15px;">
+            <strong>Basic</strong><br>$9.99/month - 100 messages/day
+          </div>
+          <div style="margin-bottom: 15px;">
+            <strong>Premium</strong><br>$19.99/month - Unlimited messages + voice notes
+          </div>
+          <div>
+            <strong>VIP</strong><br>$49.99/month - All features + priority support
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button class="btn-secondary" onclick="closeSubscriptionModal()">Cancel</button>
+          <button class="btn-primary" onclick="redirectToCheckout()">Subscribe Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "https://companion-studio-production.up.railway.app/api";
+    let currentToken = null;
+    let currentPersona = "mia";
+    let currentUserId = null;
+
+    // INIT
+    window.addEventListener("DOMContentLoaded", () => {
+      currentToken = localStorage.getItem("token");
+      if (currentToken) {
+        showChatScreen();
+      }
     });
-  }
-  return { reply: cleanReply(rawReply), usage: response.usage };
-}
+
+    // AUTH FUNCTIONS
+    function toggleAuthMode() {
+      document.getElementById("loginForm").style.display =
+        document.getElementById("loginForm").style.display === "none" ? "block" : "none";
+      document.getElementById("registerForm").style.display =
+        document.getElementById("registerForm").style.display === "none" ? "block" : "none";
+      document.getElementById("authMessage").innerHTML = "";
+    }
+
+    async function handleLogin() {
+      const email = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value;
+
+      if (!email || !password) {
+        showAuthMessage("Please fill in all fields", "error");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          showAuthMessage(err.error || "Login failed", "error");
+          return;
+        }
+
+        const data = await res.json();
+        currentToken = data.token;
+        currentUserId = data.userId;
+        localStorage.setItem("token", currentToken);
+        localStorage.setItem("userId", currentUserId);
+        showChatScreen();
+      } catch (err) {
+        showAuthMessage("Network error: " + err.message, "error");
+      }
+    }
+
+    async function handleRegister() {
+      const email = document.getElementById("registerEmail").value.trim();
+      const password = document.getElementById("registerPassword").value;
+      const password2 = document.getElementById("registerPassword2").value;
+
+      if (!email || !password || !password2) {
+        showAuthMessage("Please fill in all fields", "error");
+        return;
+      }
+
+      if (password.length < 8) {
+        showAuthMessage("Password must be at least 8 characters", "error");
+        return;
+      }
+
+      if (password !== password2) {
+        showAuthMessage("Passwords don't match", "error");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          showAuthMessage(err.error || "Registration failed", "error");
+          return;
+        }
+
+        const data = await res.json();
+        currentToken = data.token;
+        currentUserId = data.userId;
+        localStorage.setItem("token", currentToken);
+        localStorage.setItem("userId", currentUserId);
+        showAuthMessage("Account created! Welcome.", "success");
+        setTimeout(() => showChatScreen(), 500);
+      } catch (err) {
+        showAuthMessage("Network error: " + err.message, "error");
+      }
+    }
+
+    function handleLogout() {
+      localStorage.removeItem("token");
+      localStorage.removeItem("userId");
+      currentToken = null;
+      currentUserId = null;
+      document.getElementById("chatMessages").innerHTML = "";
+      document.getElementById("loginEmail").value = "";
+      document.getElementById("loginPassword").value = "";
+      document.getElementById("registerEmail").value = "";
+      document.getElementById("registerPassword").value = "";
+      document.getElementById("registerPassword2").value = "";
+      document.getElementById("authMessage").innerHTML = "";
+      showAuthScreen();
+    }
+
+    function showAuthMessage(msg, type) {
+      const msgEl = document.getElementById("authMessage");
+      msgEl.className = type;
+      msgEl.textContent = msg;
+    }
+
+    function showAuthScreen() {
+      document.getElementById("authScreen").style.display = "flex";
+      document.getElementById("chatScreen").style.display = "none";
+      document.getElementById("loginForm").style.display = "block";
+      document.getElementById("registerForm").style.display = "none";
+    }
+
+    function showChatScreen() {
+      document.getElementById("authScreen").style.display = "none";
+      document.getElementById("chatScreen").style.display = "flex";
+      loadConversationHistory();
+    }
+
+    // CHAT FUNCTIONS
+    function switchPersona(persona) {
+      currentPersona = persona;
+      document.querySelectorAll(".persona-tab").forEach((tab, i) => {
+        tab.classList.remove("active");
+      });
+      event.target.classList.add("active");
+      document.getElementById("currentPersonaName").textContent =
+        persona.charAt(0).toUpperCase() + persona.slice(1);
+      document.getElementById("chatMessages").innerHTML = "";
+      loadConversationHistory();
+    }
+
+    async function loadConversationHistory() {
+      if (!currentToken) return;
+      try {
+        const res = await fetch(
+          `${API_BASE}/chat/${currentPersona}/history`,
+          {
+            headers: { Authorization: `Bearer ${currentToken}` },
+          }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("chatMessages").innerHTML = "";
+        data.history?.forEach((msg) => {
+          addMessageToUI(msg.content, msg.role);
+        });
+        document.getElementById("chatMessages").scrollTop =
+          document.getElementById("chatMessages").scrollHeight;
+      } catch (err) {
+        console.error("Failed to load history:", err);
+      }
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("messageInput");
+      const message = input.value.trim();
+
+      if (!message) return;
+
+      addMessageToUI(message, "user");
+      input.value = "";
+      input.style.height = "auto";
+
+      addMessageToUI("", "loading");
+
+      try {
+        const res = await fetch(`${API_BASE}/chat/${currentPersona}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
+          body: JSON.stringify({ message }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          removeLoadingMessage();
+          addMessageToUI(err.error || "Failed to get response", "error");
+          return;
+        }
+
+        const data = await res.json();
+        removeLoadingMessage();
+        addMessageToUI(data.reply, "assistant");
+      } catch (err) {
+        removeLoadingMessage();
+        addMessageToUI("Network error: " + err.message, "error");
+      }
+    }
+
+    function addMessageToUI(text, role) {
+      const container = document.getElementById("chatMessages");
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `message ${role}`;
+
+      if (role === "loading") {
+        msgDiv.innerHTML = `
+          <div class="message-bubble">
+            <div class="typing-indicator">
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+            </div>
+          </div>
+        `;
+      } else if (role === "error") {
+        msgDiv.innerHTML = `<div class="message-bubble" style="background: #ffe0e0; color: #c00;">${escapeHtml(text)}</div>`;
+      } else {
+        msgDiv.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`;
+      }
+
+      container.appendChild(msgDiv);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function removeLoadingMessage() {
+      const loadingMsg = document.querySelector(".message.loading");
+      if (loadingMsg) loadingMsg.remove();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // SUBSCRIPTION
+    function openSubscriptionModal() {
+      document.getElementById("subscriptionModal").classList.add("active");
+    }
+
+    function closeSubscriptionModal() {
+      document.getElementById("subscriptionModal").classList.remove("active");
+    }
+
+    async function redirectToCheckout() {
+      // This will redirect to Stripe checkout
+      // For now, we'll show a message
+      alert("Stripe checkout integration coming soon! Contact support to subscribe.");
+      closeSubscriptionModal();
+    }
+
+    // AUTO-RESIZE TEXTAREA
+    document.addEventListener("DOMContentLoaded", () => {
+      const textarea = document.getElementById("messageInput");
+      if (textarea) {
+        textarea.addEventListener("input", () => {
+          textarea.style.height = "auto";
+          textarea.style.height = Math.min(textarea.scrollHeight, 80) + "px";
+        });
+        textarea.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
