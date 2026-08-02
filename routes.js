@@ -14,7 +14,7 @@
     "@anthropic-ai/sdk": "^0.20.0",
     "pg": "^8.11.0",
     "bcrypt": "^5.1.1",
-    "jsonwebtoken": "^9.1.2",
+    "jsonwebtoken": "^9.0.2",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",
     "express-rate-limit": "^7.1.5",
