@@ -1,0 +1,68 @@
+name: Smoke test — BullMQ worker
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 9 * * *'
+  pull_request: {}
+
+env:
+  REDIS_HOST: localhost
+  REDIS_PORT: 6379
+  PROACTIVE_CONCURRENCY: 2
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start app and worker in background
+        run: |
+          nohup npm start > app.log 2>&1 &
+          nohup npm run worker > worker.log 2>&1 &
+          sleep 6
+          ps aux | grep -E "node|npm" || true
+
+      - name: Enqueue a test job
+        run: |
+          node -e "import('bullmq').then(async ({Queue})=>{ const q=new Queue('voice-jobs',{connection:{host:process.env.REDIS_HOST||'127.0.0.1', port:parseInt(process.env.REDIS_PORT||'6379')}}); const job=await q.add('generate-voice',{persona:'smoke',reply:'Hello from Actions smoke test',userId:'smoke'}); console.log('Enqueued job id=',job.id); await q.close(); process.exit(0) }).catch(e=>{ console.error(e); process.exit(1) })"
+
+      - name: Wait for worker to process
+        run: sleep 8
+
+      - name: Show logs
+        run: |
+          echo "---- WORKER LOG ----"
+          tail -n 200 worker.log || true
+          echo "---- APP LOG ----"
+          tail -n 200 app.log || true
+
+      - name: Assert job processed
+        run: |
+          if grep -iE "processed|completed|completed job|job completed|finished" worker.log >/dev/null 2>&1; then
+            echo "Worker processed job"
+          else
+            echo "No evidence of job processing in worker.log"
+            exit 1
+          fi
