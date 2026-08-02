@@ -1,8 +1,9 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import { router } from "./routes.js";
+import rateLimit from "express-rate-
+import routes from "./routes.js";
+
 import { initDB } from "./db.js";
 import dotenv from "dotenv";
 
