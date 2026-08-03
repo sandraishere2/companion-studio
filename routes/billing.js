@@ -11,10 +11,19 @@
 //   APP_BASE_URL               (e.g. https://companion-studio.up.railway.app)
 
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import stripe from '../stripe/client.js';
 import requireAuth from '../middleware/requireAuth.js';
 
 const router = express.Router();
+
+const billingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many billing requests, please try again later.',
+});
 
 async function getOrCreateStripeCustomer(user) {
   if (user.stripeCustomerId) return user.stripeCustomerId;
@@ -29,7 +38,7 @@ async function getOrCreateStripeCustomer(user) {
   return customer.id;
 }
 
-router.post('/create-subscription-checkout', requireAuth, async (req, res) => {
+router.post('/create-subscription-checkout', billingLimiter, requireAuth, async (req, res) => {
   try {
     const customerId = await getOrCreateStripeCustomer(req.user);
 
@@ -48,7 +57,7 @@ router.post('/create-subscription-checkout', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/create-topup-checkout', requireAuth, async (req, res) => {
+router.post('/create-topup-checkout', billingLimiter, requireAuth, async (req, res) => {
   try {
     const customerId = await getOrCreateStripeCustomer(req.user);
 
@@ -67,7 +76,7 @@ router.post('/create-topup-checkout', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/create-portal-session', requireAuth, async (req, res) => {
+router.post('/create-portal-session', billingLimiter, requireAuth, async (req, res) => {
   try {
     const customerId = await getOrCreateStripeCustomer(req.user);
 
