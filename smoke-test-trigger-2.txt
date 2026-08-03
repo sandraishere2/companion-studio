@@ -1,5 +1,0 @@
-Trigger smoke test run (retry)
-
-This tiny file was added to trigger the smoke-test workflow on the feature/cron-bullmq-worker branch.
-
-Timestamp: 2026-08-02T12:58:00Z
