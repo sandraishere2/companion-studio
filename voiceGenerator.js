@@ -26,8 +26,8 @@ export async function generateVoiceNote(personaName, text, userId) {
   }
 
   const cleanText = text
-    .replace(/<[^>]*>/g, "")
-    .replace(/<[^>]*/g, "")
+    .replace(/</g, "")
+    .replace(/>/g, "")
     .replace(/\[.*?\]/g, "")
     .trim();
 
