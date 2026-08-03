@@ -1,21 +1,18 @@
-// middleware/requireAuth.js
-//
-// TEMPORARY placeholder. Real auth (Supabase session/JWT check) needs to
-// replace this before going live — right now it lets every request through
-// as a fake logged-in test user, so the billing routes have a req.user to
-// work with while you're still building.
-//
-// Replace the contents of this function with real logic that:
-//   1. Reads the user's session/token from the request
-//   2. Looks up the user (e.g. via Supabase)
-//   3. Sets req.user = { id, email, stripeCustomerId }
-//   4. Calls next() only if the user is authenticated
+import jwt from 'jsonwebtoken';
 
-module.exports = function requireAuth(req, res, next) {
-  req.user = {
-    id: 'temp-test-user-id',
-    email: 'test-user@example.com',
-    stripeCustomerId: null, // will be created automatically on first checkout
-  };
-  next();
-};
+export default function requireAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Login required' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = { id: decoded.userId, email: decoded.email };
+    next();
+  } catch {
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
+}

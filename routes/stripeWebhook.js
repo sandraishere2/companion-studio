@@ -1,15 +1,15 @@
 // routes/stripeWebhook.js
 //
 // CRITICAL: this route needs the RAW request body to verify the Stripe
-// signature — it must be mounted BEFORE express.json() runs on this path,
-// using express.raw(). See server.js for correct ordering.
+// signature. Mount BEFORE express.json() on this path using express.raw().
 //
 // Requires env vars:
-//   STRIPE_WEBHOOK_SECRET   (from the Stripe Dashboard, or `stripe listen` in dev)
+//   STRIPE_WEBHOOK_SECRET   (from Stripe Dashboard, or `stripe listen` in dev)
 
-const express = require('express');
+import express from 'express';
+import stripe from '../stripe/client.js';
+
 const router = express.Router();
-const stripe = require('../stripe/client');
 
 router.post(
   '/',
@@ -36,31 +36,26 @@ router.post(
           console.log('Checkout completed:', session.id, session.mode);
           break;
         }
-
         case 'invoice.paid': {
           const invoice = event.data.object;
           console.log('Invoice paid:', invoice.id);
           break;
         }
-
         case 'invoice.payment_failed': {
           const invoice = event.data.object;
           console.log('Invoice payment failed:', invoice.id);
           break;
         }
-
         case 'customer.subscription.updated': {
           const subscription = event.data.object;
           console.log('Subscription updated:', subscription.id, subscription.status);
           break;
         }
-
         case 'customer.subscription.deleted': {
           const subscription = event.data.object;
           console.log('Subscription cancelled:', subscription.id);
           break;
         }
-
         default:
           break;
       }
@@ -73,4 +68,4 @@ router.post(
   }
 );
 
-module.exports = router;
+export default router;

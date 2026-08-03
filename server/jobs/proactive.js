@@ -3,7 +3,7 @@ import pLimit from 'p-limit';
 
 import { getPersonaReply } from '../../index.js';
 import { generateVoiceNote } from '../../voiceGenerator.js';
-import { getDB } from '../../backend/db.js';
+import { getDB } from '../../db.js';
 
 let VoiceQueue = null;
 try {

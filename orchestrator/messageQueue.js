@@ -1,4 +1,4 @@
-import { getPersonaReply } from "./index.js";
+import { getPersonaReply } from "../index.js";
 import { getDB } from "../db.js";
 
 const queues = { mia: [], lena: [], jade: [] };
