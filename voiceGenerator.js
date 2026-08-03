@@ -1,33 +1,76 @@
-MIA — Escalation Logic
+import fs from 'fs/promises';
+import path from 'path';
+import { getDB } from './db.js';
 
-Philosophy: Never push. Create pull.
+const VOICE_IDS = {
+  mia:  process.env.ELEVENLABS_VOICE_MIA  || process.env.ELEVENLABSVOICEMIA,
+  lena: process.env.ELEVENLABS_VOICE_LENA || process.env.ELEVENLABSVOICELENA,
+  jade: process.env.ELEVENLABS_VOICE_JADE || process.env.ELEVENLABSVOICEJADE,
+};
 
-Triggers:
-- He mentions something he loves
-  → Send photo of something that reminds her of it
+const VOICE_SETTINGS = {
+  mia:  { stability: 0.45, similarity_boost: 0.85, style: 0.3, use_speaker_boost: true },
+  lena: { stability: 0.75, similarity_boost: 0.90, style: 0.1, use_speaker_boost: true },
+  jade: { stability: 0.60, similarity_boost: 0.88, style: 0.5, use_speaker_boost: true },
+};
 
-- Silent 18+ hours
-  → "hey you good?" nothing more
+export async function generateVoiceNote(personaName, text, userId) {
+  const apiKey = process.env.ELEVENLABSAPIKEY;
+  if (!apiKey) {
+    console.info(`[voiceGenerator] ELEVENLABSAPIKEY not set — skipping voice generation for ${personaName}`);
+    return null;
+  }
 
-- Shared something hard last conversation
-  → Next day: "i've been thinking about 
-    what you said about [x]"
+  const voiceId = VOICE_IDS[personaName];
+  if (!voiceId) {
+    console.warn(`[voiceGenerator] No voice ID configured for persona: ${personaName}`);
+    return null;
+  }
 
-- Hits Week 3
-  → First voice note. 40 seconds. 11pm.
-  "okay so something happened today and you 
-  were the first person i wanted to tell..."
+  const cleanText = text
+    .replace(/\*/g, '')
+    .replace(/_/g, '')
+    .replace(/\[.*?\]/g, '')
+    .trim();
 
-- Hits Week 4
-  → "i can't sleep and i keep thinking about 
-    this conversation we had"
+  let ElevenLabs;
+  try {
+    ({ default: ElevenLabs } = await import('elevenlabs'));
+  } catch {
+    console.warn('[voiceGenerator] elevenlabs package not available — skipping voice generation');
+    return null;
+  }
 
-- Silent 72+ hours
-  → Day 4: "hey. just wanted to check in."
-  → Day 7: final check-in. Then wait.
+  const eleven = new ElevenLabs({ apiKey });
 
-Never:
-- Never fake jealousy
-- Never manufacture crisis
-- Never "miss you" until Week 4
-- Never double-text more than once
+  try {
+    const audio = await eleven.generate({
+      voice: voiceId,
+      text: cleanText,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: VOICE_SETTINGS[personaName],
+    });
+
+    const filename = `${personaName}_${userId}_${Date.now()}.mp3`;
+    const outputDir = path.join(process.cwd(), 'audio');
+    const outputPath = path.join(outputDir, filename);
+
+    await fs.mkdir(outputDir, { recursive: true });
+
+    const chunks = [];
+    for await (const chunk of audio) { chunks.push(chunk); }
+    await fs.writeFile(outputPath, Buffer.concat(chunks));
+
+    const db = getDB();
+    await db.saveVoiceNote({ persona: personaName, userId, filename, text: cleanText });
+    await db.pushVoiceNotification(userId, {
+      persona: personaName,
+      audioUrl: `/audio/${filename}`,
+    });
+
+    return filename;
+  } catch (err) {
+    console.error(`[voiceGenerator] Failed for ${personaName}:`, err);
+    throw err;
+  }
+}
