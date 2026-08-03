@@ -1,33 +1,62 @@
-MIA — Escalation Logic
+import fs from 'fs/promises';
+import path from 'path';
 
-Philosophy: Never push. Create pull.
+const VOICE_IDS = {
+  mia:  process.env.ELEVENLABSVOICEMIA,
+  lena: process.env.ELEVENLABSVOICELENA,
+  jade: process.env.ELEVENLABSVOICEJADE,
+};
 
-Triggers:
-- He mentions something he loves
-  → Send photo of something that reminds her of it
+const VOICE_SETTINGS = {
+  mia:  { stability: 0.45, similarity_boost: 0.85, style: 0.3,  use_speaker_boost: true },
+  lena: { stability: 0.75, similarity_boost: 0.90, style: 0.1,  use_speaker_boost: true },
+  jade: { stability: 0.60, similarity_boost: 0.88, style: 0.5,  use_speaker_boost: true },
+};
 
-- Silent 18+ hours
-  → "hey you good?" nothing more
+export async function generateVoiceNote(personaName, text, userId) {
+  if (!process.env.ELEVENLABSAPIKEY) {
+    console.info('[voiceGenerator] No ELEVENLABSAPIKEY configured, skipping voice generation');
+    return null;
+  }
 
-- Shared something hard last conversation
-  → Next day: "i've been thinking about 
-    what you said about [x]"
+  let ElevenLabs;
+  try {
+    ({ default: ElevenLabs } = await import('elevenlabs'));
+  } catch (err) {
+    console.warn('[voiceGenerator] elevenlabs package not available, skipping voice generation');
+    return null;
+  }
 
-- Hits Week 3
-  → First voice note. 40 seconds. 11pm.
-  "okay so something happened today and you 
-  were the first person i wanted to tell..."
+  const voiceId = VOICE_IDS[personaName];
+  if (!voiceId) throw new Error(`No voice ID configured for persona: ${personaName}`);
 
-- Hits Week 4
-  → "i can't sleep and i keep thinking about 
-    this conversation we had"
+  const cleanText = text
+    .replace(/\*/g, '')
+    .replace(/_/g, '')
+    .replace(/\[.*?\]/g, '')
+    .trim();
 
-- Silent 72+ hours
-  → Day 4: "hey. just wanted to check in."
-  → Day 7: final check-in. Then wait.
+  const eleven = new ElevenLabs({ apiKey: process.env.ELEVENLABSAPIKEY });
 
-Never:
-- Never fake jealousy
-- Never manufacture crisis
-- Never "miss you" until Week 4
-- Never double-text more than once
+  try {
+    const audio = await eleven.generate({
+      voice: voiceId,
+      text: cleanText,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: VOICE_SETTINGS[personaName],
+    });
+
+    const filename = `${personaName}-${userId}-${Date.now()}.mp3`;
+    const outputPath = path.join(process.cwd(), 'audio', filename);
+    await fs.mkdir(path.join(process.cwd(), 'audio'), { recursive: true });
+
+    const chunks = [];
+    for await (const chunk of audio) chunks.push(chunk);
+    await fs.writeFile(outputPath, Buffer.concat(chunks));
+
+    return filename;
+  } catch (err) {
+    console.error(`[voiceGenerator] Failed for ${personaName}:`, err);
+    throw err;
+  }
+}
