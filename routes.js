@@ -3,12 +3,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import Stripe from 'stripe';
 import Anthropic from '@anthropic-ai/sdk';
-import pg from 'pg';
+import { pool } from './db.js';
 
 const router = express.Router();
-const { Pool } = pg;
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
