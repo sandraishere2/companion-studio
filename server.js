@@ -39,14 +39,22 @@ const limiter = rateLimit({
   legacyHeaders: false,
   message: "Too many requests, please try again later.",
 });
-app.use("/api/", limiter);
+app.use(limiter);
 
-app.use("/api", routes);
+// health check endpoints for diagnostics
+app.get("/", (_req, res) => {
+  res.status(200).json({ status: "ok", service: "companion-studio" });
+});
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "healthy" });
+});
+
+// mount API routes at root — apiRoutes.js already defines paths like
+// /auth/login, /chat/:companion, etc.
+app.use("/", routes);
+
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
-
-// healthcheck
-app.get("/healthz", (_req, res) => res.sendStatus(200));
 
 // basic error handler
 app.use((err, _req, res, _next) => {
