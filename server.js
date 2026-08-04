@@ -51,9 +51,10 @@ app.get("/health", (_req, res) => {
 // healthcheck endpoint for Railway
 app.get("/healthz", (_req, res) => res.sendStatus(200));
 
-// mount API routes at root — apiRoutes.js already defines paths like
-// /auth/login, /chat/:companion, etc.
-app.use("/", routes);
+// mount API routes under /api — apiRoutes.js defines paths like
+// /auth/login, /chat/:companion, etc., so this exposes them as
+// /api/auth/login, /api/chat/:companion, etc.
+app.use("/api", routes);
 
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
