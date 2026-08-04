@@ -1,6 +1,6 @@
-import ElevenLabs from 'elevenlabs';
+import { ElevenLabsClient } from 'elevenlabs';
 
-const client = new ElevenLabs({
+const client = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY,
 });
 
