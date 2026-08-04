@@ -18,7 +18,7 @@ export async function generateVoiceNote(persona, text, userId) {
 
   // Map personas to their ElevenLabs voice IDs
   const voiceMap = {
-    mia: process.env.ELEVENLABS_VOICE_JADE || 'mZxDd7xv8t0q',
+    mia: process.env.ELEVENLABS_VOICE_MIA || 'mZxDd7xv8t0q',
     lena: process.env.ELEVENLABS_VOICE_LENA || 'EXAVITQu4vr4',
     jade: 'MF3mGyEYCl7XYWbV9V6O',
   };
