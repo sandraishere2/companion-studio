@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import Stripe from 'stripe';
 import Anthropic from '@anthropic-ai/sdk';
-import { pool } from './db.js';
+import { getPool } from './db.js';
 
 const router = express.Router();
 
@@ -41,12 +41,12 @@ router.post('/auth/signup', async (req, res) => {
     return res.status(400).json({ error: 'Email and password required' });
   }
   try {
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    const existing = await getPool().query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Account already exists' });
     }
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = await pool.query(
+    const result = await getPool().query(
       'INSERT INTO users (email, password_hash, created_at) VALUES ($1, $2, NOW()) RETURNING id, email',
       [email, passwordHash]
     );
@@ -65,7 +65,7 @@ router.post('/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password required' });
   }
   try {
-    const result = await pool.query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
+    const result = await getPool().query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -202,7 +202,7 @@ router.post('/webhook/stripe', async (req, res) => {
         const session = event.data.object;
         const userId = session.client_reference_id;
         const { companion } = session.metadata;
-        await pool.query(
+        await getPool().query(
           `INSERT INTO subscriptions (user_id, companion, tier, stripe_subscription_id, status, created_at)
            VALUES ($1, $2, 'standard', $3, 'active', NOW())`,
           [userId, companion, session.subscription]
@@ -211,7 +211,7 @@ router.post('/webhook/stripe', async (req, res) => {
       }
       case 'customer.subscription.deleted': {
         const subscription = event.data.object;
-        await pool.query(
+        await getPool().query(
           `UPDATE subscriptions SET status = 'cancelled' WHERE stripe_subscription_id = $1`,
           [subscription.id]
         );
