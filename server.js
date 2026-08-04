@@ -48,6 +48,8 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "healthy" });
 });
+// healthcheck endpoint for Railway
+app.get("/healthz", (_req, res) => res.sendStatus(200));
 
 // mount API routes at root — apiRoutes.js already defines paths like
 // /auth/login, /chat/:companion, etc.
