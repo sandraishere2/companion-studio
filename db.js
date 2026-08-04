@@ -3,26 +3,22 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 const { Pool } = pg;
-let pool;
 
-export function getPool() {
-  if (!pool) {
-    throw new Error("Database not initialized. Call initDB() first.");
-  }
-  return pool;
-}
+// Initialize pool immediately at module load time
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: false }
+    : false,
+});
 
 export function getDB() {
   return dbMethods;
 }
 
 export async function initDB() {
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
-  });
+  // Pool is already created above
+  // Just create tables
   await createTables();
   console.log("Database initialized");
 }
