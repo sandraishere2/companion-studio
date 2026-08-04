@@ -3,7 +3,14 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 const { Pool } = pg;
-export let pool;
+let pool;
+
+export function getPool() {
+  if (!pool) {
+    throw new Error("Database not initialized. Call initDB() first.");
+  }
+  return pool;
+}
 
 export function getDB() {
   return dbMethods;
@@ -102,136 +109,67 @@ const dbMethods = {
   },
 
   generateToken(userId) {
-    return jwt.sign(
-      { userId },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" }
-    );
+    const JWT_SECRET = process.env.JWT_SECRET;
+    return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "30d" });
   },
 
-  async getUser(userId) {
+  async saveMessage({ userId, persona, role, content, isProactive }) {
     const result = await pool.query(
-      "SELECT * FROM users WHERE id = $1",
-      [userId]
-    );
-    return result.rows[0];
-  },
-
-  async updateUser(userId, fields) {
-    const sets = Object.keys(fields)
-      .map((k, i) => `${k} = $${i + 2}`)
-      .join(", ");
-    await pool.query(
-      `UPDATE users SET ${sets} WHERE id = $1`,
-      [userId, ...Object.values(fields)]
-    );
-  },
-
-  async getSubscription(userId, persona) {
-    const result = await pool.query(
-      "SELECT * FROM subscriptions WHERE user_id = $1 AND persona = $2",
-      [userId, persona]
-    );
-    return result.rows[0];
-  },
-
-  async createSubscription(data) {
-    await pool.query(
-      `INSERT INTO subscriptions
-        (user_id, persona, tier, stripe_subscription_id, status)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, persona)
-       DO UPDATE SET tier = $3, status = $5,
-         stripe_subscription_id = $4`,
-      [data.userId, data.persona, data.tier,
-       data.stripeSubscriptionId, data.status]
-    );
-  },
-
-  async updateSubscriptionByStripeId(stripeSubId, fields) {
-    const sets = Object.keys(fields)
-      .map((k, i) => `${k} = $${i + 2}`)
-      .join(", ");
-    await pool.query(
-      `UPDATE subscriptions SET ${sets}
-       WHERE stripe_subscription_id = $1`,
-      [stripeSubId, ...Object.values(fields)]
-    );
-  },
-
-  async getActiveSubscribers(persona) {
-    const result = await pool.query(
-      `SELECT u.id as "userId", s.tier
-       FROM subscriptions s
-       JOIN users u ON u.id = s.user_id
-       WHERE s.persona = $1 AND s.status = 'active'`,
-      [persona]
-    );
-    return result.rows;
-  },
-
-  async saveMessage({ persona, userId, role, content, isProactive = false }) {
-    await pool.query(
-      `INSERT INTO messages
-        (user_id, persona, role, content, is_proactive)
-       VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO messages (user_id, persona, role, content, is_proactive)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [userId, persona, role, content, isProactive]
     );
+    return result.rows[0];
   },
 
-  async getConversationHistory(persona, userId, limit = 50) {
+  async getMessageHistory({ userId, persona, limit = 50 }) {
     const result = await pool.query(
-      `SELECT role, content FROM messages
-       WHERE user_id = $1 AND persona = $2
-       ORDER BY created_at DESC
-       LIMIT $3`,
+      `SELECT * FROM messages WHERE user_id = $1 AND persona = $2
+       ORDER BY created_at DESC LIMIT $3`,
       [userId, persona, limit]
     );
     return result.rows.reverse();
   },
 
-  async getMessageCount(userId, persona) {
+  async saveVoiceNote({ userId, persona, filename, text }) {
     const result = await pool.query(
-      `SELECT COUNT(*) FROM messages
-       WHERE user_id = $1 AND persona = $2
-         AND role = 'user'
-         AND created_at > NOW() - INTERVAL '24 hours'`,
-      [userId, persona]
+      `INSERT INTO voice_notes (user_id, persona, filename, text)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [userId, persona, filename, text]
     );
-    return parseInt(result.rows[0].count);
+    return result.rows[0];
   },
 
-  async getUsersSilentFor(persona, hours) {
+  async getVoiceNotes({ userId, persona, limit = 10 }) {
     const result = await pool.query(
-      `SELECT DISTINCT s.user_id as "userId", s.tier
-       FROM subscriptions s
-       WHERE s.persona = $1 AND s.status = 'active'
-         AND s.user_id NOT IN (
-           SELECT DISTINCT user_id FROM messages
-           WHERE persona = $1
-             AND created_at > NOW() - INTERVAL '${hours} hours'
-         )`,
-      [persona]
+      `SELECT * FROM voice_notes WHERE user_id = $1 AND persona = $2 AND delivered = FALSE
+       ORDER BY created_at DESC LIMIT $3`,
+      [userId, persona, limit]
     );
     return result.rows;
   },
 
-  async pushNotification(userId, payload) {
-    await pool.query(
-      "INSERT INTO push_queue (user_id, payload) VALUES ($1, $2)",
-      [userId, JSON.stringify(payload)]
-    );
+  async markVoiceNoteDelivered(noteId) {
+    await pool.query("UPDATE voice_notes SET delivered = TRUE WHERE id = $1", [
+      noteId,
+    ]);
   },
 
-  async pushVoiceNotification(userId, payload) {
-    await this.pushNotification(userId, { type: "voice_note", ...payload });
+  async getSubscriptions(userId) {
+    const result = await pool.query(
+      "SELECT * FROM subscriptions WHERE user_id = $1",
+      [userId]
+    );
+    return result.rows;
   },
 
-  async saveVoiceNote({ persona, userId, filename, text }) {
-    await pool.query(
-      `INSERT INTO voice_notes (user_id, persona, filename, text)
-       VALUES ($1, $2, $3, $4)`,
-      [userId, persona, filename, text]
+  async createSubscription({ userId, persona, tier, stripeSubscriptionId }) {
+    const result = await pool.query(
+      `INSERT INTO subscriptions (user_id, persona, tier, stripe_subscription_id)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [userId, persona, tier, stripeSubscriptionId]
     );
+    return result.rows[0];
   },
 };
+
