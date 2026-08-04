@@ -95,11 +95,16 @@ router.post('/chat/:companion', requireAuth, async (req, res) => {
   }
 
   try {
-    const messages = [...(history || []), { role: 'user', content: message }];
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages,
+ const response = await anthropic.messages.create({
+ model: 'claude-3-5-sonnet-20241022', // ✅ VALID
+ max_tokens: 1024,
+ messages,
+});
+
+    
+      
+      
+    
     });
     const reply = response.content
       .filter((block) => block.type === 'text')
