@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { generateVoiceNote } from '../../voiceGenerator.js';
+import { generateVoiceNote } from '../../voicegenerator.js';
 
 const connection = {
   host: process.env.REDIS_HOST || '127.0.0.1',
