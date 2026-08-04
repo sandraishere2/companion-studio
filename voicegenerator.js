@@ -20,7 +20,7 @@ export async function generateVoiceNote(persona, text, userId) {
   const voiceMap = {
     mia: process.env.ELEVENLABS_VOICE_MIA || 'mZxDd7xv8t0q',
     lena: process.env.ELEVENLABS_VOICE_LENA || 'EXAVITQu4vr4',
-    jade: 'MF3mGyEYCl7XYWbV9V6O',
+    jade: process.env.ELEVENLABS_VOICE_JADE || 'MF3mGyEYCl7XYWbV9V6O',
   };
 
   const voiceId = voiceMap[persona.toLowerCase()];
