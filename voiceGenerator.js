@@ -1,33 +1,58 @@
-MIA — Escalation Logic
+import ElevenLabs from 'elevenlabs';
 
-Philosophy: Never push. Create pull.
+const client = new ElevenLabs({
+  apiKey: process.env.ELEVENLABS_API_KEY,
+});
 
-Triggers:
-- He mentions something he loves
-  → Send photo of something that reminds her of it
+/**
+ * Generate a voice note for a persona using ElevenLabs
+ * @param {string} persona - The persona name ('mia', 'lena', 'jade')
+ * @param {string} text - The text to convert to speech
+ * @param {string} userId - The user ID to associate with this voice note
+ * @returns {Promise<Object>} Voice note metadata
+ */
+export async function generateVoiceNote(persona, text, userId) {
+  if (!text || text.trim().length === 0) {
+    throw new Error('Cannot generate voice note: text is empty');
+  }
 
-- Silent 18+ hours
-  → "hey you good?" nothing more
+  // Map personas to their ElevenLabs voice IDs
+  const voiceMap = {
+    mia: process.env.ELEVENLABS_VOICE_JADE || 'mZxDd7xv8t0q',
+    lena: process.env.ELEVENLABS_VOICE_LENA || 'EXAVITQu4vr4',
+    jade: 'MF3mGyEYCl7XYWbV9V6O',
+  };
 
-- Shared something hard last conversation
-  → Next day: "i've been thinking about 
-    what you said about [x]"
+  const voiceId = voiceMap[persona.toLowerCase()];
+  if (!voiceId) {
+    throw new Error(`Unknown persona: ${persona}`);
+  }
 
-- Hits Week 3
-  → First voice note. 40 seconds. 11pm.
-  "okay so something happened today and you 
-  were the first person i wanted to tell..."
+  try {
+    console.info(`[voiceGenerator] generating voice note for ${persona}/${userId}`, {
+      textLength: text.length,
+      voiceId,
+    });
 
-- Hits Week 4
-  → "i can't sleep and i keep thinking about 
-    this conversation we had"
+    const voiceNote = await client.generate({
+      voice_id: voiceId,
+      text: text,
+      model_id: 'eleven_monolingual_v1',
+    });
 
-- Silent 72+ hours
-  → Day 4: "hey. just wanted to check in."
-  → Day 7: final check-in. Then wait.
+    console.info(`[voiceGenerator] voice note generated for ${persona}/${userId}`, {
+      audioLength: voiceNote?.length || 'unknown',
+    });
 
-Never:
-- Never fake jealousy
-- Never manufacture crisis
-- Never "miss you" until Week 4
-- Never double-text more than once
+    return {
+      persona,
+      userId,
+      timestamp: new Date().toISOString(),
+      success: true,
+      audioData: voiceNote,
+    };
+  } catch (error) {
+    console.error(`[voiceGenerator] failed to generate voice note for ${persona}/${userId}`, error);
+    throw new Error(`Voice generation failed for ${persona}: ${error.message}`);
+  }
+}
