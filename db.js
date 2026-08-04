@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 const { Pool } = pg;
-let pool;
+export let pool;
 
 export function getDB() {
   return dbMethods;
