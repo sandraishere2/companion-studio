@@ -95,17 +95,13 @@ router.post('/chat/:companion', requireAuth, async (req, res) => {
   }
 
   try {
- const response = await anthropic.messages.create({
- model: 'claude-3-5-sonnet-20241022', // ✅ VALID
- max_tokens: 1024,
- messages,
-});
-
-    
-      
-      
-    
+    const messages = [...(history || []), { role: 'user', content: message }];
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1024,
+      messages,
     });
+
     const reply = response.content
       .filter((block) => block.type === 'text')
       .map((block) => block.text)
@@ -233,3 +229,4 @@ router.post('/webhook/stripe', async (req, res) => {
 });
 
 export default router;
+
