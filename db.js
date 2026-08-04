@@ -12,6 +12,10 @@ export const pool = new Pool({
     : false,
 });
 
+pool.on("error", (err) => {
+  console.error("❌ Pool error:", err);
+});
+
 export function getDB() {
   return dbMethods;
 }

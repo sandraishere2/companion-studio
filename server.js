@@ -86,9 +86,17 @@ app.use((err, _req, res, _next) => {
 async function start() {
   try {
     console.log("🚀 Starting server initialization...");
-    // await initDB(); // TEMP: disable to test if app boots without DB
-    console.log("✅ Database skipped, attempting to listen...");
+    console.log("📦 DATABASE_URL present:", !!process.env.DATABASE_URL);
 
+    try {
+      await initDB();
+      console.log("✅ Database initialized");
+    } catch (dbErr) {
+      console.error("⚠️  Database init failed (non-blocking):", dbErr.message);
+      console.log("ℹ️  Continuing without DB — routes may fail");
+    }
+
+    console.log("✅ Attempting to listen...");
     const server = app.listen(PORT, "0.0.0.0", () => {
       console.log(`✅ Server listening on 0.0.0.0:${PORT}`);
       console.log(`✅ Server running on port ${PORT}`);
