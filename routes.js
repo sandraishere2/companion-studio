@@ -3,12 +3,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import Stripe from 'stripe';
 import Anthropic from '@anthropic-ai/sdk';
-import pg from 'pg';
+import { getPool } from './db.js';
 
 const router = express.Router();
-const { Pool } = pg;
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -43,6 +41,7 @@ router.post('/auth/signup', async (req, res) => {
     return res.status(400).json({ error: 'Email and password required' });
   }
   try {
+    const pool = getPool();
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Account already exists' });
@@ -67,6 +66,7 @@ router.post('/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password required' });
   }
   try {
+    const pool = getPool();
     const result = await pool.query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
     if (!user) {
@@ -185,7 +185,7 @@ router.post('/subscribe/:companion', requireAuth, async (req, res) => {
 
 // ---------- Stripe webhook ----------
 // NOTE: this route must receive the raw request body (not JSON-parsed)
-// so it must be mounted in server.js BEFORE express.json(), e.g.:
+// so it must be mounted in server.js BEFORE express.json(), e.g..:
 //   app.post('/webhook/stripe', express.raw({ type: 'application/json' }), routes)
 router.post('/webhook/stripe', async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -199,6 +199,7 @@ router.post('/webhook/stripe', async (req, res) => {
   }
 
   try {
+    const pool = getPool();
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
@@ -230,3 +231,4 @@ router.post('/webhook/stripe', async (req, res) => {
 });
 
 export default router;
+
