@@ -29,6 +29,15 @@ app.use(
   })
 );
 
+// debug: log every incoming request as early as possible in the
+// middleware chain, so we can see whether requests are even reaching
+// the app before anything else (body parsing, rate limiting, routing)
+// has a chance to fail silently.
+app.use((req, _res, next) => {
+  console.log(`➡️  ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // limit JSON payload size
 app.use(express.json({ limit: "10mb" }));
 
@@ -59,20 +68,47 @@ app.use("/api", routes);
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
+// catch-all 404 handler — placed BEFORE the error handler so we can see
+// in the logs whether a request actually made it through the middleware
+// chain and simply didn't match any route, vs. never reaching the app
+// at all.
+app.use((req, res) => {
+  console.log(`📍 404: ${req.method} ${req.path}`);
+  res.status(404).json({ error: "Not found" });
+});
+
 // basic error handler
 app.use((err, _req, res, _next) => {
-  console.error("Unhandled error:", err);
+  console.error("❌ Unhandled error:", err);
   res.status(500).json({ error: "Internal server error" });
 });
 
 async function start() {
   try {
+    console.log("🚀 Starting server initialization...");
     await initDB();
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on port ${PORT}`);
+    console.log("✅ Database initialized, attempting to listen...");
+
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`✅ Server listening on 0.0.0.0:${PORT}`);
+      console.log(`✅ Server running on port ${PORT}`);
+    });
+
+    server.on("error", (err) => {
+      console.error("❌ Server error:", err);
+      process.exit(1);
+    });
+
+    server.on("connection", (socket) => {
+      console.log(`🔌 New TCP connection from ${socket.remoteAddress}`);
+    });
+
+    server.on("close", () => {
+      console.log("⚠️  Server closed.");
     });
   } catch (err) {
-    console.error("Failed to start server:", err);
+    console.error("❌ Failed to start server:", err);
+    if (err && err.stack) console.error(err.stack);
     process.exit(1);
   }
 }
@@ -85,6 +121,16 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   console.log("SIGTERM received, exiting.");
   process.exit(0);
+});
+
+// catch anything that would otherwise crash the process silently
+// (e.g. an unhandled promise rejection deep in a route or middleware)
+process.on("uncaughtException", (err) => {
+  console.error("❌ Uncaught exception:", err);
+  if (err && err.stack) console.error(err.stack);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("❌ Unhandled promise rejection:", reason);
 });
 
 start();
