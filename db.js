@@ -24,6 +24,7 @@ export async function initDB() {
   // Pool is already created above
   // Just create tables
   await createTables();
+  await enableRLS();
   console.log("Database initialized");
 }
 
@@ -81,6 +82,78 @@ async function createTables() {
     CREATE INDEX IF NOT EXISTS idx_push_queue_user
       ON push_queue(user_id, delivered);
   `);
+}
+
+async function enableRLS() {
+  try {
+    // Enable RLS on users table
+    await pool.query("ALTER TABLE users ENABLE ROW LEVEL SECURITY;");
+
+    // Drop existing policies if they exist (idempotent)
+    await pool.query(`DROP POLICY IF EXISTS users_select_policy ON users;`);
+    await pool.query(`DROP POLICY IF EXISTS users_insert_policy ON users;`);
+    await pool.query(`DROP POLICY IF EXISTS users_update_policy ON users;`);
+
+    // Create policies for users table
+    await pool.query(`
+      CREATE POLICY users_select_policy ON users
+        FOR SELECT
+        USING (id = (SELECT id FROM users WHERE email = current_user));
+    `);
+
+    await pool.query(`
+      CREATE POLICY users_insert_policy ON users
+        FOR INSERT
+        WITH CHECK (true);
+    `);
+
+    await pool.query(`
+      CREATE POLICY users_update_policy ON users
+        FOR UPDATE
+        USING (id = (SELECT id FROM users WHERE email = current_user))
+        WITH CHECK (id = (SELECT id FROM users WHERE email = current_user));
+    `);
+
+    // Enable RLS on subscriptions table
+    await pool.query("ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;");
+
+    // Drop existing policies if they exist (idempotent)
+    await pool.query(`DROP POLICY IF EXISTS subscriptions_select_policy ON subscriptions;`);
+    await pool.query(`DROP POLICY IF EXISTS subscriptions_insert_policy ON subscriptions;`);
+    await pool.query(`DROP POLICY IF EXISTS subscriptions_update_policy ON subscriptions;`);
+    await pool.query(`DROP POLICY IF EXISTS subscriptions_delete_policy ON subscriptions;`);
+
+    // Create policies for subscriptions table
+    await pool.query(`
+      CREATE POLICY subscriptions_select_policy ON subscriptions
+        FOR SELECT
+        USING (user_id = (SELECT id FROM users WHERE email = current_user));
+    `);
+
+    await pool.query(`
+      CREATE POLICY subscriptions_insert_policy ON subscriptions
+        FOR INSERT
+        WITH CHECK (user_id = (SELECT id FROM users WHERE email = current_user));
+    `);
+
+    await pool.query(`
+      CREATE POLICY subscriptions_update_policy ON subscriptions
+        FOR UPDATE
+        USING (user_id = (SELECT id FROM users WHERE email = current_user))
+        WITH CHECK (user_id = (SELECT id FROM users WHERE email = current_user));
+    `);
+
+    await pool.query(`
+      CREATE POLICY subscriptions_delete_policy ON subscriptions
+        FOR DELETE
+        USING (user_id = (SELECT id FROM users WHERE email = current_user));
+    `);
+
+    console.log("✅ RLS enabled on users and subscriptions tables");
+  } catch (err) {
+    console.error("⚠️ RLS setup warning:", err.message);
+    // Don't fail startup if RLS policies already exist
+  }
 }
 
 const dbMethods = {
@@ -172,4 +245,8 @@ const dbMethods = {
     return result.rows[0];
   },
 };
+
+export function getPool() {
+  return pool;
+}
 
