@@ -253,7 +253,27 @@ async function enableRLS() {
   } catch (err) {
     console.error("❌ CRITICAL RLS setup error:", err.message);
     console.error("Stack:", err.stack);
-    throw err; // Now throw, so we see the real failure
+    throw err;
+  }
+}
+
+// Separate function to verify RLS status using a fresh pool connection
+async function verifyRLSStatus(tableName) {
+  const tempPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
+  });
+  
+  try {
+    const result = await tempPool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');",
+      [tableName]
+    );
+    return result.rows[0]?.relrowsecurity;
+  } finally {
+    await tempPool.end();
   }
 }
 
