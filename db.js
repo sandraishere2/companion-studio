@@ -86,69 +86,97 @@ async function createTables() {
 
 async function enableRLS() {
   try {
-    // Create function to get the authenticated user ID from session variable
+    console.log("🔐 Starting RLS setup...");
+
+    // Step 1: Create current_user_id function
+    console.log("  → Creating current_user_id() function...");
     await pool.query(`
       CREATE OR REPLACE FUNCTION current_user_id() RETURNS UUID AS $$
         SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid;
       $$ LANGUAGE sql STABLE;
     `);
+    console.log("  ✅ Function created");
 
-    // ---- users table ----------------------------------------------------
+    // ---- users table ----
+    console.log("🔐 Enabling RLS on users table...");
+    
+    console.log("  → Enabling RLS...");
     await pool.query("ALTER TABLE users ENABLE ROW LEVEL SECURITY;");
+    
+    // Verify RLS is enabled
+    let result = await pool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = 'users' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');"
+    );
+    console.log("  ✓ RLS status after ALTER:", result.rows[0]?.relrowsecurity);
 
-    // Drop existing policies if they exist (idempotent)
+    console.log("  → Dropping old policies...");
     await pool.query(`DROP POLICY IF EXISTS users_select_public ON users;`);
     await pool.query(`DROP POLICY IF EXISTS users_select_policy ON users;`);
     await pool.query(`DROP POLICY IF EXISTS users_insert_policy ON users;`);
     await pool.query(`DROP POLICY IF EXISTS users_update_policy ON users;`);
 
-    // Anyone (authenticated or not) can read users
+    console.log("  → Creating users_select_public policy...");
     await pool.query(`
       CREATE POLICY users_select_public ON users
         FOR SELECT
         USING (true);
     `);
 
-    // Anyone can sign up
+    console.log("  → Creating users_insert_policy...");
     await pool.query(`
       CREATE POLICY users_insert_policy ON users
         FOR INSERT
         WITH CHECK (true);
     `);
 
-    // Only authenticated users can update their own row
+    console.log("  → Creating users_update_policy...");
     await pool.query(`
       CREATE POLICY users_update_policy ON users
         FOR UPDATE
         USING (id = current_user_id())
         WITH CHECK (id = current_user_id());
     `);
+    
+    // Verify policies exist
+    result = await pool.query(
+      "SELECT COUNT(*) as policy_count FROM pg_policies WHERE schemaname='public' AND tablename='users';"
+    );
+    console.log("  ✓ Policies on users table:", result.rows[0]?.policy_count);
 
-    // ---- subscriptions table ---------------------------------------------
+    // ---- subscriptions table ----
+    console.log("🔐 Enabling RLS on subscriptions table...");
+    
+    console.log("  → Enabling RLS...");
     await pool.query("ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;");
+    
+    // Verify RLS is enabled
+    result = await pool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = 'subscriptions' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');"
+    );
+    console.log("  ✓ RLS status after ALTER:", result.rows[0]?.relrowsecurity);
 
-    // Drop existing policies if they exist (idempotent)
+    console.log("  → Dropping old policies...");
     await pool.query(`DROP POLICY IF EXISTS subscriptions_select_public ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_select_policy ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_insert_policy ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_update_policy ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_delete_policy ON subscriptions;`);
 
-    // Anyone can read subscriptions (e.g. to see pricing tiers)
+    console.log("  → Creating subscriptions_select_public policy...");
     await pool.query(`
       CREATE POLICY subscriptions_select_public ON subscriptions
         FOR SELECT
         USING (true);
     `);
 
-    // Only authenticated users can create subscriptions for themselves
+    console.log("  → Creating subscriptions_insert_policy...");
     await pool.query(`
       CREATE POLICY subscriptions_insert_policy ON subscriptions
         FOR INSERT
         WITH CHECK (user_id = current_user_id());
     `);
 
-    // Only authenticated users can update their own subscriptions
+    console.log("  → Creating subscriptions_update_policy...");
     await pool.query(`
       CREATE POLICY subscriptions_update_policy ON subscriptions
         FOR UPDATE
@@ -156,16 +184,23 @@ async function enableRLS() {
         WITH CHECK (user_id = current_user_id());
     `);
 
-    // Only authenticated users can delete their own subscriptions
+    console.log("  → Creating subscriptions_delete_policy...");
     await pool.query(`
       CREATE POLICY subscriptions_delete_policy ON subscriptions
         FOR DELETE
         USING (user_id = current_user_id());
     `);
+    
+    // Verify policies exist
+    result = await pool.query(
+      "SELECT COUNT(*) as policy_count FROM pg_policies WHERE schemaname='public' AND tablename='subscriptions';"
+    );
+    console.log("  ✓ Policies on subscriptions table:", result.rows[0]?.policy_count);
 
     console.log("✅ RLS enabled on users and subscriptions tables");
   } catch (err) {
     console.error("⚠️ RLS setup warning:", err.message);
+    if (err.stack) console.error(err.stack);
     // Don't fail startup if RLS policies already exist
   }
 }
