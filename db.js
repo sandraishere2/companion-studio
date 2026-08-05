@@ -85,68 +85,86 @@ async function createTables() {
 }
 
 async function enableRLS() {
+  // current_user_id() resolves the authenticated user for the current
+  // session from the `app.current_user_id` session variable, which the
+  // application layer sets after verifying a request's JWT. Requests made
+  // without an authenticated session (i.e. no session variable set) resolve
+  // to NULL and therefore never match any row-owner check below.
   try {
-    // Enable RLS on users table
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION current_user_id() RETURNS UUID AS $
+        SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+      $ LANGUAGE sql STABLE;
+    `);
+
+    // ---- users table ----------------------------------------------------
     await pool.query("ALTER TABLE users ENABLE ROW LEVEL SECURITY;");
 
     // Drop existing policies if they exist (idempotent)
+    await pool.query(`DROP POLICY IF EXISTS users_select_public ON users;`);
     await pool.query(`DROP POLICY IF EXISTS users_select_policy ON users;`);
     await pool.query(`DROP POLICY IF EXISTS users_insert_policy ON users;`);
     await pool.query(`DROP POLICY IF EXISTS users_update_policy ON users;`);
 
-    // Create policies for users table
+    // Anyone (authenticated or not) can read users
     await pool.query(`
-      CREATE POLICY users_select_policy ON users
+      CREATE POLICY users_select_public ON users
         FOR SELECT
-        USING (id = (SELECT id FROM users WHERE email = current_user));
+        USING (true);
     `);
 
+    // Anyone can sign up
     await pool.query(`
       CREATE POLICY users_insert_policy ON users
         FOR INSERT
         WITH CHECK (true);
     `);
 
+    // Only authenticated users can update their own row
     await pool.query(`
       CREATE POLICY users_update_policy ON users
         FOR UPDATE
-        USING (id = (SELECT id FROM users WHERE email = current_user))
-        WITH CHECK (id = (SELECT id FROM users WHERE email = current_user));
+        USING (id = current_user_id())
+        WITH CHECK (id = current_user_id());
     `);
 
-    // Enable RLS on subscriptions table
+    // ---- subscriptions table ---------------------------------------------
     await pool.query("ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;");
 
     // Drop existing policies if they exist (idempotent)
+    await pool.query(`DROP POLICY IF EXISTS subscriptions_select_public ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_select_policy ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_insert_policy ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_update_policy ON subscriptions;`);
     await pool.query(`DROP POLICY IF EXISTS subscriptions_delete_policy ON subscriptions;`);
 
-    // Create policies for subscriptions table
+    // Anyone can read subscriptions (e.g. to see pricing tiers)
     await pool.query(`
-      CREATE POLICY subscriptions_select_policy ON subscriptions
+      CREATE POLICY subscriptions_select_public ON subscriptions
         FOR SELECT
-        USING (user_id = (SELECT id FROM users WHERE email = current_user));
+        USING (true);
     `);
 
+    // Only authenticated users can create subscriptions for themselves
     await pool.query(`
       CREATE POLICY subscriptions_insert_policy ON subscriptions
         FOR INSERT
-        WITH CHECK (user_id = (SELECT id FROM users WHERE email = current_user));
+        WITH CHECK (user_id = current_user_id());
     `);
 
+    // Only authenticated users can update their own subscriptions
     await pool.query(`
       CREATE POLICY subscriptions_update_policy ON subscriptions
         FOR UPDATE
-        USING (user_id = (SELECT id FROM users WHERE email = current_user))
-        WITH CHECK (user_id = (SELECT id FROM users WHERE email = current_user));
+        USING (user_id = current_user_id())
+        WITH CHECK (user_id = current_user_id());
     `);
 
+    // Only authenticated users can delete their own subscriptions
     await pool.query(`
       CREATE POLICY subscriptions_delete_policy ON subscriptions
         FOR DELETE
-        USING (user_id = (SELECT id FROM users WHERE email = current_user));
+        USING (user_id = current_user_id());
     `);
 
     console.log("✅ RLS enabled on users and subscriptions tables");
