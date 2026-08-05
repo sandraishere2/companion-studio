@@ -84,6 +84,26 @@ async function createTables() {
   `);
 }
 
+// Separate function to verify RLS status using a fresh pool connection
+async function verifyRLSStatus(tableName) {
+  const tempPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
+  });
+
+  try {
+    const result = await tempPool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');",
+      [tableName]
+    );
+    return result.rows[0]?.relrowsecurity;
+  } finally {
+    await tempPool.end();
+  }
+}
+
 async function enableRLS() {
   console.log("🔐 Starting RLS setup...");
 
@@ -99,7 +119,7 @@ async function enableRLS() {
 
     // ---- users table ----
     console.log("🔐 Enabling RLS on users table...");
-    
+
     try {
       console.log("  → Enabling RLS...");
       await pool.query("ALTER TABLE users ENABLE ROW LEVEL SECURITY;");
@@ -108,7 +128,7 @@ async function enableRLS() {
       console.error("  ❌ Failed to enable RLS on users:", err.message);
       throw err;
     }
-    
+
     // Verify RLS is enabled with a separate connection to avoid transaction caching
     let result = await verifyRLSStatus("users");
     console.log("  ✓ RLS status on users after ALTER:", result);
@@ -159,7 +179,7 @@ async function enableRLS() {
       console.error("  ❌ Failed to create users_update_policy:", err.message);
       throw err;
     }
-    
+
     // Verify policies exist
     result = await pool.query(
       "SELECT COUNT(*) as policy_count FROM pg_policies WHERE schemaname='public' AND tablename='users';"
@@ -168,7 +188,7 @@ async function enableRLS() {
 
     // ---- subscriptions table ----
     console.log("🔐 Enabling RLS on subscriptions table...");
-    
+
     try {
       console.log("  → Enabling RLS...");
       await pool.query("ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;");
@@ -177,7 +197,7 @@ async function enableRLS() {
       console.error("  ❌ Failed to enable RLS on subscriptions:", err.message);
       throw err;
     }
-    
+
     // Verify RLS is enabled with a separate connection to avoid transaction caching
     result = await verifyRLSStatus("subscriptions");
     console.log("  ✓ RLS status on subscriptions after ALTER:", result);
@@ -242,7 +262,7 @@ async function enableRLS() {
       console.error("  ❌ Failed to create subscriptions_delete_policy:", err.message);
       throw err;
     }
-    
+
     // Verify policies exist
     result = await pool.query(
       "SELECT COUNT(*) as policy_count FROM pg_policies WHERE schemaname='public' AND tablename='subscriptions';"
@@ -254,46 +274,6 @@ async function enableRLS() {
     console.error("❌ CRITICAL RLS setup error:", err.message);
     console.error("Stack:", err.stack);
     throw err;
-  }
-}
-
-// Separate function to verify RLS status using a fresh pool connection
-async function verifyRLSStatus(tableName) {
-  const tempPool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
-  });
-  
-  try {
-    const result = await tempPool.query(
-      "SELECT relrowsecurity FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');",
-      [tableName]
-    );
-    return result.rows[0]?.relrowsecurity;
-  } finally {
-    await tempPool.end();
-  }
-}
-
-// Separate function to verify RLS status using a fresh pool connection
-async function verifyRLSStatus(tableName) {
-  const tempPool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
-  });
-  
-  try {
-    const result = await tempPool.query(
-      "SELECT relrowsecurity FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');",
-      [tableName]
-    );
-    return result.rows[0]?.relrowsecurity;
-  } finally {
-    await tempPool.end();
   }
 }
 
@@ -383,5 +363,11 @@ const dbMethods = {
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [userId, persona, tier, stripeSubscriptionId]
     );
-    return result.rows[0];\n  },\n};\n\nexport function getPool() {\n  return pool;\n}\n
+    return result.rows[0];
+  },
+};
+
+export function getPool() {
+  return pool;
+}
 
