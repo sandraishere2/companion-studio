@@ -92,9 +92,9 @@ async function enableRLS() {
   // to NULL and therefore never match any row-owner check below.
   try {
     await pool.query(`
-      CREATE OR REPLACE FUNCTION current_user_id() RETURNS UUID AS $
+      CREATE OR REPLACE FUNCTION current_user_id() RETURNS UUID AS $$
         SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid;
-      $ LANGUAGE sql STABLE;
+      $$ LANGUAGE sql STABLE;
     `);
 
     // ---- users table ----------------------------------------------------
