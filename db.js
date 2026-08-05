@@ -109,12 +109,9 @@ async function enableRLS() {
       throw err;
     }
     
-    // Verify RLS is enabled
-    let result = await pool.query(
-      "SELECT relrowsecurity FROM pg_class WHERE relname = 'users' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');"
-    );
-    const usersRLS = result.rows[0]?.relrowsecurity;
-    console.log("  ✓ RLS status on users after ALTER:", usersRLS);
+    // Verify RLS is enabled with a separate connection to avoid transaction caching
+    let result = await verifyRLSStatus("users");
+    console.log("  ✓ RLS status on users after ALTER:", result);
 
     console.log("  → Dropping old policies...");
     await pool.query(`DROP POLICY IF EXISTS users_select_public ON users;`);
@@ -181,12 +178,9 @@ async function enableRLS() {
       throw err;
     }
     
-    // Verify RLS is enabled
-    result = await pool.query(
-      "SELECT relrowsecurity FROM pg_class WHERE relname = 'subscriptions' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');"
-    );
-    const subsRLS = result.rows[0]?.relrowsecurity;
-    console.log("  ✓ RLS status on subscriptions after ALTER:", subsRLS);
+    // Verify RLS is enabled with a separate connection to avoid transaction caching
+    result = await verifyRLSStatus("subscriptions");
+    console.log("  ✓ RLS status on subscriptions after ALTER:", result);
 
     console.log("  → Dropping old policies...");
     await pool.query(`DROP POLICY IF EXISTS subscriptions_select_public ON subscriptions;`);
@@ -260,6 +254,26 @@ async function enableRLS() {
     console.error("❌ CRITICAL RLS setup error:", err.message);
     console.error("Stack:", err.stack);
     throw err; // Now throw, so we see the real failure
+  }
+}
+
+// Separate function to verify RLS status using a fresh pool connection
+async function verifyRLSStatus(tableName) {
+  const tempPool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
+  });
+  
+  try {
+    const result = await tempPool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = $1 AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');",
+      [tableName]
+    );
+    return result.rows[0]?.relrowsecurity;
+  } finally {
+    await tempPool.end();
   }
 }
 
@@ -349,11 +363,5 @@ const dbMethods = {
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [userId, persona, tier, stripeSubscriptionId]
     );
-    return result.rows[0];
-  },
-};
-
-export function getPool() {
-  return pool;
-}
+    return result.rows[0];\n  },\n};\n\nexport function getPool() {\n  return pool;\n}\n
 
