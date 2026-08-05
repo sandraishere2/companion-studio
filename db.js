@@ -253,7 +253,7 @@ async function enableRLS() {
   } catch (err) {
     console.error("❌ CRITICAL RLS setup error:", err.message);
     console.error("Stack:", err.stack);
-    throw err; // Now throw, so we see the real failure
+    throw err;
   }
 }
 
@@ -363,5 +363,11 @@ const dbMethods = {
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [userId, persona, tier, stripeSubscriptionId]
     );
-    return result.rows[0];\n  },\n};\n\nexport function getPool() {\n  return pool;\n}\n
+    return result.rows[0];
+  },
+};
+
+export function getPool() {
+  return pool;
+}
 
