@@ -85,16 +85,12 @@ async function createTables() {
 }
 
 async function enableRLS() {
-  // current_user_id() resolves the authenticated user for the current
-  // session from the `app.current_user_id` session variable, which the
-  // application layer sets after verifying a request's JWT. Requests made
-  // without an authenticated session (i.e. no session variable set) resolve
-  // to NULL and therefore never match any row-owner check below.
   try {
+    // Create function to get the authenticated user ID from session variable
     await pool.query(`
-      CREATE OR REPLACE FUNCTION current_user_id() RETURNS UUID AS $
+      CREATE OR REPLACE FUNCTION current_user_id() RETURNS UUID AS $$
         SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid;
-      $ LANGUAGE sql STABLE;
+      $$ LANGUAGE sql STABLE;
     `);
 
     // ---- users table ----------------------------------------------------
