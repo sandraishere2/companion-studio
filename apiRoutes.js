@@ -34,6 +34,30 @@ function requireAuth(req, res, next) {
   }
 }
 
+// ---------- Debug endpoint: Check RLS status ----------
+router.get('/debug/rls-status', async (req, res) => {
+  try {
+    const usersResult = await pool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = 'users' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');"
+    );
+    const subsResult = await pool.query(
+      "SELECT relrowsecurity FROM pg_class WHERE relname = 'subscriptions' AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');"
+    );
+
+    const usersRLS = usersResult.rows[0]?.relrowsecurity;
+    const subsRLS = subsResult.rows[0]?.relrowsecurity;
+
+    res.json({
+      users_rls_enabled: usersRLS,
+      subscriptions_rls_enabled: subsRLS,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('RLS status check error:', err);
+    res.status(500).json({ error: 'Failed to check RLS status', details: err.message });
+  }
+});
+
 // ---------- Auth routes ----------
 router.post('/auth/register', async (req, res) => {
   const { email, password } = req.body;
@@ -229,3 +253,4 @@ router.post('/webhook/stripe', async (req, res) => {
 });
 
 export default router;
+
